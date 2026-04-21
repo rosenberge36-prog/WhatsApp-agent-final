@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WhatsApp AI Agent</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --green: #25D366;
+      --dark-green: #128C7E;
+      --light-green: #DCF8C6;
+      --bg: #111b21;
+      --surface: #1f2c34;
+      --surface2: #2a3942;
+      --text: #e9edef;
+      --text-muted: #8696a0;
+      --border: #2a3942;
+      --red: #ef4444;
+      --yellow: #f59e0b;
+      --blue: #3b82f6;
+    }
+    body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; min-height: 100vh; }
+
+    /* Header */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    header .logo { font-size: 28px; }
+    header h1 { font-size: 20px; font-weight: 600; }
+    header .subtitle { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
+    .status-badge {
+      margin-left: auto;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .status-badge.connected { background: rgba(37,211,102,0.15); color: var(--green); }
+    .status-badge.disconnected { background: rgba(239,68,68,0.15); color: var(--red); }
+    .status-badge.qr_pending { background: rgba(245,158,11,0.15); color: var(--yellow); }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+
+    /* Layout */
+    .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    @media (max-width: 768px) { .grid, .grid-3 { grid-template-columns: 1fr; } }
+
+    /* Cards */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+    }
+    .card h2 { font-size: 15px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 16px; }
+
+    /* Stats */
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      text-align: center;
+    }
+    .stat-value { font-size: 36px; font-weight: 700; color: var(--green); }
+    .stat-label { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
+
+    /* QR Code */
+    #qr-section { text-align: center; }
+    #qr-img { max-width: 220px; border-radius: 12px; background: white; padding: 12px; margin: 12px auto; display: block; }
+    #qr-instructions { font-size: 13px; color: var(--text-muted); line-height: 1.6; }
+    #connected-info { text-align: center; }
+    #connected-info .avatar { font-size: 64px; margin-bottom: 8px; }
+    #connected-info .name { font-size: 20px; font-weight: 600; }
+    #connected-info .number { font-size: 14px; color: var(--text-muted); margin-top: 4px; }
+
+    /* Activity log */
+    #activity-log { max-height: 320px; overflow-y: auto; }
+
+    /* Chat List */
+    #chat-list { max-height: 400px; overflow-y: auto; }
+    .chat-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .chat-info { flex: 1; }
+    .chat-name { font-size: 14px; font-weight: 500; }
+    .chat-id { font-size: 11px; color: var(--text-muted); }
+    .badge-group { background: #555; font-size: 10px; padding: 2px 6px; border-radius: 4px; margin-left: 6px; }
+    .activity-item {
+      display: flex;
+      gap: 10px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+    }
+    .activity-item:last-child { border-bottom: none; }
+    .activity-icon { font-size: 16px; flex-shrink: 0; }
+    .activity-desc { flex: 1; line-height: 1.4; }
+    .activity-contact { color: var(--green); font-weight: 500; }
+    .activity-time { color: var(--text-muted); font-size: 11px; flex-shrink: 0; }
+
+    /* Config form */
+    .form-group { margin-bottom: 16px; }
+    .form-group label { display: block; font-size: 13px; color: var(--text-muted); margin-bottom: 6px; }
+    .form-group input, .form-group textarea, .form-group select {
+      width: 100%;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+      color: var(--text);
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .form-group input:focus, .form-group textarea:focus {
+      border-color: var(--green);
+    }
+    .form-group textarea { resize: vertical; min-height: 80px; }
+    .toggle-row { display: flex; align-items: center; justify-content: space-between; }
+    .toggle {
+      position: relative;
+      width: 44px;
+      height: 24px;
+      flex-shrink: 0;
+    }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider {
+      position: absolute;
+      inset: 0;
+      background: var(--surface2);
+      border-radius: 24px;
+      cursor: pointer;
+      transition: 0.3s;
+    }
+    .toggle-slider:before {
+      content: '';
+      position: absolute;
+      width: 18px;
+      height: 18px;
+      left: 3px;
+      top: 3px;
+      background: white;
+      border-radius: 50%;
+      transition: 0.3s;
+    }
+    .toggle input:checked + .toggle-slider { background: var(--green); }
+    .toggle input:checked + .toggle-slider:before { transform: translateX(20px); }
+
+    /* Buttons */
+    .btn {
+      padding: 10px 20px;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      transition: opacity 0.2s;
+    }
+    .btn:hover { opacity: 0.85; }
+    .btn-primary { background: var(--green); color: #111; }
+    .btn-danger { background: var(--red); color: white; }
+
+    /* Toast */
+    #toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: var(--surface2);
+      border: 1px solid var(--green);
+      color: var(--text);
+      padding: 12px 20px;
+      border-radius: 10px;
+      font-size: 14px;
+      opacity: 0;
+      transition: opacity 0.3s;
+      z-index: 999;
+    }
+    #toast.show { opacity: 1; }
+
+    .full-width { grid-column: 1 / -1; }
+    .mb-20 { margin-bottom: 20px; }
+    .uptime { font-size: 12px; color: var(--text-muted); text-align: center; margin-top: 8px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">🤖</div>
+  <div>
+    <h1>WhatsApp AI Agent</h1>
+    <div class="subtitle">Intelligent auto-reply & status reactions</div>
+  </div>
+  <div class="status-badge disconnected" id="status-badge">
+    <div class="status-dot"></div>
+    <span id="status-text">Connecting...</span>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- Stats Row -->
+  <div class="grid-3 mb-20">
+    <div class="stat-card">
+      <div class="stat-value" id="stat-received">0</div>
+      <div class="stat-label">Messages Received</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="stat-replied">0</div>
+      <div class="stat-label">AI Replies Sent</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="stat-reactions">0</div>
+      <div class="stat-label">Status Reactions</div>
+    </div>
+  </div>
+
+  <div class="grid">
+
+    <!-- Left: Connection -->
+    <div class="card">
+      <h2>Connection</h2>
+      <div id="qr-section">
+        <p id="qr-instructions">Waiting for QR code...<br/>Start the agent to see the QR code here.</p>
+        <img id="qr-img" src="" alt="QR Code" style="display:none;" />
+      </div>
+      <div id="connected-info" style="display:none;">
+        <div class="avatar">✅</div>
+        <div class="name" id="conn-name">—</div>
+        <div class="number" id="conn-number">—</div>
+      </div>
+      <div class="uptime" id="uptime-text"></div>
+    </div>
+
+    <!-- Right: Activity Log -->
+    <div class="card">
+      <h2>Live Activity</h2>
+      <div id="activity-log">
+        <div class="activity-item">
+          <span class="activity-icon">ℹ️</span>
+          <span class="activity-desc">Waiting for activity...</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Whitelist Management -->
+    <div class="card full-width">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <h2>Chat Whitelist (Permission Control)</h2>
+        <button class="btn btn-primary" onclick="loadChats()" style="padding: 6px 12px; font-size: 12px;">🔄 Refresh Chats</button>
+      </div>
+      <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">Only chats enabled below will receive AI auto-replies. All others are ignored.</p>
+      <div id="chat-list">
+        <p style="text-align: center; padding: 20px; color: var(--text-muted);">Connect WhatsApp to see your chats here.</p>
+      </div>
+    </div>
+
+    <!-- Config: full width -->
+    <div class="card full-width">
+      <h2>Agent Configuration</h2>
+      <form id="config-form">
+        <div class="grid">
+          <div>
+            <div class="form-group">
+              <label>Your Name (how the AI refers to you)</label>
+              <input type="text" id="cfg-ownerName" placeholder="e.g. Alex" />
+            </div>
+            <div class="form-group">
+              <label>AI Personality</label>
+              <input type="text" id="cfg-personality" placeholder="e.g. friendly, casual, and helpful" />
+            </div>
+            <div class="form-group">
+              <label>Reply Language</label>
+              <input type="text" id="cfg-language" placeholder="e.g. same language as the person messaging" />
+            </div>
+            <div class="form-group">
+              <label>Reply Delay (milliseconds)</label>
+              <input type="number" id="cfg-autoReplyDelay" min="0" max="30000" step="500" />
+            </div>
+          </div>
+          <div>
+            <div class="form-group">
+              <div class="toggle-row">
+                <label>Auto-Reply Enabled</label>
+                <label class="toggle">
+                  <input type="checkbox" id="cfg-autoReplyEnabled" />
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            </div>
+            <div class="form-group">
+              <div class="toggle-row">
+                <label>Ignore Group Chats</label>
+                <label class="toggle">
+                  <input type="checkbox" id="cfg-ignoreGroups" />
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Custom Rules (one per line)</label>
+              <textarea id="cfg-customRules" placeholder="e.g. Never discuss politics&#10;Always be polite&#10;If asked about availability, say you'll check and get back"></textarea>
+            </div>
+            <div class="form-group">
+              <label>Blocked Contacts (phone numbers, one per line)</label>
+              <textarea id="cfg-blockedContacts" placeholder="e.g. 1234567890@c.us"></textarea>
+            </div>
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary">💾 Save Configuration</button>
+      </form>
+    </div>
+
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+  const socket = io();
+
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 3000);
+  }
+
+  function formatUptime(seconds) {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    return `Uptime: ${h}h ${m}m ${s}s`;
+  }
+
+  function updateStatus(data) {
+    const badge = document.getElementById('status-badge');
+    const text = document.getElementById('status-text');
+    badge.className = 'status-badge ' + data.status;
+
+    if (data.status === 'connected') {
+      text.textContent = 'Connected';
+      document.getElementById('qr-section').style.display = 'none';
+      document.getElementById('connected-info').style.display = 'block';
+      if (data.info) {
+        document.getElementById('conn-name').textContent = data.info.name || 'Unknown';
+        document.getElementById('conn-number').textContent = '+' + (data.info.number || '');
+      }
+    } else if (data.status === 'qr_pending') {
+      text.textContent = 'Scan QR Code';
+      document.getElementById('connected-info').style.display = 'none';
+      document.getElementById('qr-section').style.display = 'block';
+    } else {
+      text.textContent = 'Disconnected';
+      document.getElementById('connected-info').style.display = 'none';
+      document.getElementById('qr-section').style.display = 'block';
+      document.getElementById('qr-instructions').textContent = 'Disconnected. Reconnecting...';
+    }
+
+    if (data.stats) {
+      document.getElementById('stat-received').textContent = data.stats.messagesReceived || 0;
+      document.getElementById('stat-replied').textContent = data.stats.repliesSent || 0;
+      document.getElementById('stat-reactions').textContent = data.stats.statusReactions || 0;
+      document.getElementById('uptime-text').textContent = formatUptime(data.stats.uptime || 0);
+    }
+  }
+
+  function updateActivity(log) {
+    const container = document.getElementById('activity-log');
+    if (!log || log.length === 0) return;
+
+    const icons = { reply: '💬', status_reaction: '👍', error: '❌', info: 'ℹ️' };
+    container.innerHTML = log.map(item => {
+      const time = new Date(item.timestamp).toLocaleTimeString();
+      return `<div class="activity-item">
+        <span class="activity-icon">${icons[item.type] || 'ℹ️'}</span>
+        <span class="activity-desc">
+          ${item.contact ? `<span class="activity-contact">${item.contact}</span>: ` : ''}${item.description}
+        </span>
+        <span class="activity-time">${time}</span>
+      </div>`;
+    }).join('');
+  }
+
+  // Socket events
+  socket.on('status_update', updateStatus);
+  socket.on('qr_code', ({ qr }) => {
+    const img = document.getElementById('qr-img');
+    const instructions = document.getElementById('qr-instructions');
+    if (qr) {
+      img.src = qr;
+      img.style.display = 'block';
+      instructions.textContent = 'Open WhatsApp → Settings → Linked Devices → Link a Device → Scan this QR code';
+    }
+  });
+  socket.on('activity_update', ({ log, stats }) => {
+    updateActivity(log);
+    if (stats) {
+      document.getElementById('stat-received').textContent = stats.messagesReceived || 0;
+      document.getElementById('stat-replied').textContent = stats.repliesSent || 0;
+      document.getElementById('stat-reactions').textContent = stats.statusReactions || 0;
+      document.getElementById('uptime-text').textContent = formatUptime(stats.uptime || 0);
+    }
+  });
+
+  // Load config
+  async function loadConfig() {
+    const res = await fetch('/api/config');
+    const cfg = await res.json();
+    document.getElementById('cfg-ownerName').value = cfg.ownerName || '';
+    document.getElementById('cfg-personality').value = cfg.personality || '';
+    document.getElementById('cfg-language').value = cfg.language || '';
+    document.getElementById('cfg-autoReplyDelay').value = cfg.autoReplyDelay || 3000;
+    document.getElementById('cfg-autoReplyEnabled').checked = cfg.autoReplyEnabled !== false;
+    document.getElementById('cfg-ignoreGroups').checked = cfg.ignoreGroups === true;
+    document.getElementById('cfg-customRules').value = (cfg.customRules || []).join('\n');
+    document.getElementById('cfg-blockedContacts').value = (cfg.blockedContacts || []).join('\n');
+  }
+
+  // Save config
+  document.getElementById('config-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const cfg = {
+      ownerName: document.getElementById('cfg-ownerName').value,
+      personality: document.getElementById('cfg-personality').value,
+      language: document.getElementById('cfg-language').value,
+      autoReplyDelay: parseInt(document.getElementById('cfg-autoReplyDelay').value),
+      autoReplyEnabled: document.getElementById('cfg-autoReplyEnabled').checked,
+      ignoreGroups: document.getElementById('cfg-ignoreGroups').checked,
+      ignoreBroadcasts: true,
+      maxHistoryMessages: 20,
+      customRules: document.getElementById('cfg-customRules').value.split('\n').filter(r => r.trim()),
+      blockedContacts: document.getElementById('cfg-blockedContacts').value.split('\n').filter(r => r.trim()),
+    };
+    const res = await fetch('/api/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(cfg),
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast('✅ Configuration saved!');
+    } else {
+      showToast('❌ Failed to save configuration');
+    }
+  });
+
+  let currentWhitelist = [];
+
+  async function loadChats() {
+    const list = document.getElementById('chat-list');
+    try {
+      const res = await fetch('/api/chats');
+      if (!res.ok) throw new Error('Not connected');
+      const chats = await res.json();
+      
+      if (chats.length === 0) {
+        list.innerHTML = '<p style="text-align: center; padding: 20px;">No chats found.</p>';
+        return;
+      }
+
+      list.innerHTML = chats.map(chat => `
+        <div class="chat-item">
+          <div class="chat-info">
+            <div class="chat-name">${chat.name || 'Unknown'} ${chat.isGroup ? '<span class="badge-group">GROUP</span>' : ''}</div>
+            <div class="chat-id">${chat.id}</div>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" onchange="toggleWhitelist('${chat.id}', this.checked)" ${currentWhitelist.includes(chat.id) ? 'checked' : ''} />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      `).join('');
+    } catch (e) {
+      list.innerHTML = '<p style="text-align: center; padding: 20px; color: var(--red);">Connect WhatsApp to manage whitelist.</p>';
+    }
+  }
+
+  async function toggleWhitelist(chatId, enabled) {
+    if (enabled) {
+      if (!currentWhitelist.includes(chatId)) currentWhitelist.push(chatId);
+    } else {
+      currentWhitelist = currentWhitelist.filter(id => id !== chatId);
+    }
+    // Save to server
+    const configRes = await fetch('/api/config');
+    const config = await configRes.json();
+    config.whitelistedContacts = currentWhitelist;
+    
+    await fetch('/api/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config),
+    });
+    showToast(enabled ? '✅ Chat enabled' : '❌ Chat disabled');
+  }
+
+  // Initial load
+  loadConfig().then(() => {
+    fetch('/api/config').then(r => r.json()).then(cfg => {
+      currentWhitelist = cfg.whitelistedContacts || [];
+      loadChats();
+    });
+  });
+  fetch('/api/status').then(r => r.json()).then(updateStatus);
+  fetch('/api/activity').then(r => r.json()).then(updateActivity);
+</script>
+</body>
+</html>

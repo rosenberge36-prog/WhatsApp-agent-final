@@ -1,0 +1,23 @@
+{
+  "name": "whatsapp-ai-agent-master",
+  "version": "2.0.0",
+  "description": "Master Edition: AI-powered WhatsApp agent with voice, vision, and command system",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "dependencies": {
+    "whatsapp-web.js": "github:pedroslopez/whatsapp-web.js#main",
+    "qrcode": "^1.5.3",
+    "qrcode-terminal": "^0.12.0",
+    "openai": "^4.52.7",
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5",
+    "dotenv": "^16.4.5",
+    "winston": "^3.13.0",
+    "node-cron": "^3.0.3",
+    "axios": "^1.7.2",
+    "fluent-ffmpeg": "^2.1.3"
+  }
+}

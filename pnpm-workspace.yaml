@@ -1,0 +1,4 @@
+onlyBuiltDependencies:
+  - "whatsapp-web.js"
+  - "puppeteer"
+  - "puppeteer-core"
